@@ -1,36 +1,86 @@
-import wxtLogo from '/wxt.svg';
 import { useState } from 'react';
-
-import reactLogo from '@/assets/react.svg';
-
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/lib/db';
 import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0);
+  const [active, setActive] = useState<number | 'all'>('all');
+  const [openId, setOpenId] = useState<number | null>(null);
+
+  const collections = useLiveQuery(() => db.collections.toArray(), []);
+  const items = useLiveQuery(async () => {
+    const all = await db.items.orderBy('createdAt').reverse().toArray();
+    return active === 'all' ? all : all.filter((i) => i.collectionId === active);
+  }, [active]);
+
+  const nameOf = (id: number) =>
+    collections?.find((c) => c.id === id)?.name ?? 'Unknown';
 
   return (
-    <>
-      <div>
-        <a href="https://wxt.dev" target="_blank">
-          <img src={wxtLogo} className="logo" alt="WXT logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>WXT + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+    <div className="shelf">
+      <h1>Snippet Shelf</h1>
+
+      <div className="tabs">
+        <button
+          className={active === 'all' ? 'tab active' : 'tab'}
+          onClick={() => setActive('all')}
+        >
+          All
         </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
+        {collections?.map((c) => (
+          <button
+            key={c.id}
+            className={active === c.id ? 'tab active' : 'tab'}
+            onClick={() => setActive(c.id!)}
+          >
+            {c.name}
+          </button>
+        ))}
       </div>
-      <p className="read-the-docs">
-        Click on the WXT and React logos to learn more
-      </p>
-    </>
+
+      {items?.length === 0 && (
+        <p className="empty">
+          Nothing saved yet. Select text on a page, right-click, and choose
+          Save to Shelf.
+        </p>
+      )}
+
+      <ul className="list">
+        {items?.map((item) => {
+          const open = openId === item.id;
+          return (
+            <li key={item.id} className="card">
+              <div
+                className="card-head"
+                onClick={() => setOpenId(open ? null : item.id!)}
+              >
+                <span className="badge">{nameOf(item.collectionId)}</span>
+                <span className="title">{item.title}</span>
+              </div>
+
+              {open && <pre className="content">{item.content}</pre>}
+
+              <div className="meta">
+                <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                <div className="actions">
+                  <button onClick={() => navigator.clipboard.writeText(item.content)}>
+                    Copy
+                  </button>
+                  {item.sourceUrl && (
+                    <a href={item.sourceUrl} target="_blank" rel="noreferrer">
+                      Source
+                    </a>
+                  )}
+                  <button className="danger" onClick={() => db.items.delete(item.id!)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
